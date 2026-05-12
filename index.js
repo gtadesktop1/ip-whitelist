@@ -16,7 +16,7 @@ async function updateWhitelist() {
         console.log("Whitelist aktualisiert:", whitelist);
     } catch (e) { console.error("Gist Fehler", e); }
 }
-setInterval(updateWhitelist, 300000);
+setInterval(updateWhitelist, 100);
 updateWhitelist();
 
 http.createServer((req, res) => {
