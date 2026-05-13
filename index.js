@@ -3,7 +3,7 @@ const httpProxy = require('http-proxy');
 const axios = require('axios');
 
 const proxy = httpProxy.createProxyServer({});
-const GIST_URL = "githubusercontent.com";
+const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
 const TARGET_NGROK = "ngrok-free.dev";
 
 let whitelist = [];
