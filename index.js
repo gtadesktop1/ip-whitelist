@@ -21,7 +21,7 @@ updateWhitelist();
 
 http.createServer((req, res) => {
     // IP von Render/Cloudflare Header holen
-    const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
     
     if (whitelist.includes(clientIp)) {
         proxy.web(req, res, { target: TARGET_NGROK, changeOrigin: true });
