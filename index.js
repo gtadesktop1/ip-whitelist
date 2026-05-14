@@ -4,24 +4,32 @@ const axios = require('axios');
 
 const proxy = httpProxy.createProxyServer({});
 const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
-const TARGET_NGROK = "https://oI493HHYNPZXcxlAGClDrwmhID3xFJRbrWzeYBsMabgcqqDuZL:ql21AgNSJFHxh1aQAqy873ADT3MNExUurNDJTbP7vOf1zOtFJN@superrespectably-acquainted-jestine.ngrok-free.dev";
+
+// Die reine Domain ohne Zugangsdaten
+const NGROK_DOMAIN = "https://superrespectably-acquainted-jestine.ngrok-free.dev";
+
+// Deine 50-Zeichen-Strings für Basic Auth
+const USERNAME = "oI493HHYNPZXcxlAGClDrwmhID3xFJRbrWzeYBsMabgcqqDuZL";
+const PASSWORD = "ql21AgNSJFHxh1aQAqy873ADT3MNExUurNDJTbP7vOf1zOtFJN";
+
+// Vorbereiten des Authorization Headers (Base64)
+const authHeader = 'Basic ' + Buffer.from(`${USERNAME}:${PASSWORD}`).toString('base64');
 
 let whitelist = [];
 let isUpdating = false;
 
-// Sichere Update-Funktion gegen Überlastung
+// Sichere Update-Funktion für die IP-Whitelist
 async function updateWhitelist() {
     if (isUpdating) return;
     isUpdating = true;
     try {
         const response = await axios.get(`${GIST_URL}?nocache=${Date.now()}`, { timeout: 5000 });
         if (response.data) {
-            // Bereinigt Leerzeichen, Windows-Zeilenumbrüche (\r) und filtert leere Zeilen
             whitelist = response.data.split('\n')
                 .map(ip => ip.replace('\r', '').trim())
                 .filter(ip => ip.length > 0);
             
-            console.log(`[${new Date().toISOString()}] Whitelist erfolgreich geladen. Einträge:`, whitelist);
+            console.log(`[${new Date().toISOString()}] Whitelist aktualisiert. Einträge:`, whitelist);
         }
     } catch (e) { 
         console.error("Fehler beim Laden des Gists:", e.message); 
@@ -30,15 +38,13 @@ async function updateWhitelist() {
     }
 }
 
-// Intervall sauber auf 5 Minuten setzen
+// Intervall: Alle 5 Minuten
 setInterval(updateWhitelist, 300000);
-// Erststart verzögert ausführen, damit der Server stabil steht
+// Start-Verzögerung
 setTimeout(updateWhitelist, 2000);
 
 http.createServer((req, res) => {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-
-    // IP-Adresse sauber extrahieren (Erste IP aus der Kette nutzen)
+    // IP-Adresse extrahieren
     let clientIp = '';
     const forwardedFor = req.headers['x-forwarded-for'];
     
@@ -48,24 +54,32 @@ http.createServer((req, res) => {
         clientIp = req.socket.remoteAddress;
     }
 
-    // IPv6-Mapping-Präfix (::ffff:) bei lokalen Tests entfernen
     if (clientIp.startsWith('::ffff:')) {
         clientIp = clientIp.replace('::ffff:', '');
     }
 
     console.log(`Anfrage von IP: [${clientIp}]`);
 
-    // Abgleich gegen die bereinigte Liste
+    // Abgleich gegen die Whitelist
     if (whitelist.includes(clientIp)) {
-        proxy.web(req, res, { target: TARGET_NGROK, changeOrigin: true }, (err) => {
+        proxy.web(req, res, { 
+            target: NGROK_DOMAIN, 
+            changeOrigin: true,
+            // Hier passiert die Magie: Auth & Bypass Header
+            headers: {
+                "Authorization": authHeader,
+                "ngrok-skip-browser-warning": "true",
+                "X-Protected": "True"
+            }
+        }, (err) => {
             console.error("Proxy-Fehler zu ngrok:", err.message);
-            res.writeHead(502);
+            res.writeHead(502, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end("🛡️ SHIELD TITAN OS: ngrok Tunnel nicht erreichbar.");
         });
     } else {
-        res.writeHead(403);
+        res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`🛡️ SHIELD TITAN OS: Zugriff verweigert.<br>Deine IP ist nicht freigeschaltet: <b>${clientIp}</b>`);
     }
 }).listen(process.env.PORT || 3000, () => {
-    console.log("Proxy-Server läuft auf Port", process.env.PORT || 3000);
+    console.log("SHIELD Proxy läuft auf Port", process.env.PORT || 3000);
 });
