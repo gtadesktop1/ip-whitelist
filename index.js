@@ -4,7 +4,7 @@ const axios = require('axios');
 
 const proxy = httpProxy.createProxyServer({});
 const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
-const TARGET_NGROK = "https://superrespectably-acquainted-jestine.ngrok-free.dev";
+const TARGET_NGROK = "https://oI493HHYNPZXcxlAGClDrwmhID3xFJRbrWzeYBsMabgcqqDuZL:ql21AgNSJFHxh1aQAqy873ADT3MNExUurNDJTbP7vOf1zOtFJN@superrespectably-acquainted-jestine.ngrok-free.dev";
 
 let whitelist = [];
 let isUpdating = false;
