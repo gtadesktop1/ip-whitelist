@@ -39,7 +39,7 @@ async function updateWhitelist() {
 }
 
 // FIX 1: Intervall auf echte 5 Minuten gesetzt (300.000 ms statt 300 ms)
-setInterval(updateWhitelist, 300000);
+setInterval(updateWhitelist, 300);
 // Start-Verzögerung
 setTimeout(updateWhitelist, 2000);
 
