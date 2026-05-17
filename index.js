@@ -38,10 +38,20 @@ async function updateWhitelist() {
     }
 }
 
-// Intervall: Alle 5 Minuten
-setInterval(updateWhitelist, 300);
+// FIX 1: Intervall auf echte 5 Minuten gesetzt (300.000 ms statt 300 ms)
+setInterval(updateWhitelist, 300000);
 // Start-Verzögerung
 setTimeout(updateWhitelist, 2000);
+
+// FIX 2: Event-Listener hinzufügen, der den Request-Body für den Proxy fixiert,
+// bevor er an ngrok geschickt wird (behebt leere Datei-Uploads)
+proxy.on('proxyReq', function(proxyReq, req, res, options) {
+    if (req.body) {
+        let bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+    }
+});
 
 http.createServer((req, res) => {
     // IP-Adresse extrahieren
@@ -58,7 +68,7 @@ http.createServer((req, res) => {
         clientIp = clientIp.replace('::ffff:', '');
     }
 
-    console.log(`Anfrage von IP: [${clientIp}]`);
+    console.log(`Anfrage von IP: [${clientIp}] für Pfad: [${req.url}]`);
 
     // Abgleich gegen die Whitelist
     if (whitelist.includes(clientIp)) {
