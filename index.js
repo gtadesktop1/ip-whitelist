@@ -5,11 +5,18 @@ const axios = require('axios');
 const proxy = httpProxy.createProxyServer({});
 // WICHTIG: Pufferung abschalten für Streaming
 proxy.on('proxyRes', function (proxyRes, req, res) {
-    // Falls Content-Type Audio ist, verhindern wir das Buffering
-    if (proxyRes.headers['content-type'] && proxyRes.headers['content-type'].includes('audio')) {
-        // Das ist der "Turbo-Modus" für Streams
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
+    const contentType = proxyRes.headers['content-type'] || '';
+    
+    // Zwinge den Browser zu glauben, dass es KEIN Video ist
+    if (contentType.includes('audio') || contentType.includes('mpeg')) {
+        proxyRes.headers['content-type'] = 'audio/mpeg'; // MP3 erzwingen
+        proxyRes.headers['x-content-type-options'] = 'nosniff';
+        proxyRes.headers['cache-control'] = 'no-cache, no-store, must-revalidate';
+        proxyRes.headers['connection'] = 'keep-alive';
+        
+        // Entferne alles, was den Browser verwirren könnte
+        delete proxyRes.headers['content-length'];
+        delete proxyRes.headers['transfer-encoding'];
     }
 });
 const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
