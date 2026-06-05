@@ -3,6 +3,15 @@ const httpProxy = require('http-proxy');
 const axios = require('axios');
 
 const proxy = httpProxy.createProxyServer({});
+// WICHTIG: Pufferung abschalten für Streaming
+proxy.on('proxyRes', function (proxyRes, req, res) {
+    // Falls Content-Type Audio ist, verhindern wir das Buffering
+    if (proxyRes.headers['content-type'] && proxyRes.headers['content-type'].includes('audio')) {
+        // Das ist der "Turbo-Modus" für Streams
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+    }
+});
 const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
 
 // Die reine Domain ohne Zugangsdaten
@@ -39,7 +48,7 @@ async function updateWhitelist() {
 }
 
 // FIX 1: Intervall auf echte 5 Minuten gesetzt (300.000 ms statt 300 ms)
-setInterval(updateWhitelist, 300);
+setInterval(updateWhitelist, 30000);
 // Start-Verzögerung
 setTimeout(updateWhitelist, 2000);
 
