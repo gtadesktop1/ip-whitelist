@@ -1,8 +1,11 @@
 const http = require('http');
 const httpProxy = require('http-proxy');
 const axios = require('axios');
+const net = require('net');
+const url = require('url');
 
 const proxy = httpProxy.createProxyServer({});
+
 // WICHTIG: Pufferung abschalten für Streaming
 proxy.on('proxyRes', function (proxyRes, req, res) {
     const contentType = proxyRes.headers['content-type'] || '';
@@ -19,10 +22,13 @@ proxy.on('proxyRes', function (proxyRes, req, res) {
         delete proxyRes.headers['transfer-encoding'];
     }
 });
-const GIST_URL = "https://gist.githubusercontent.com/gtadesktop1/8a31394fb00ddee15af6176caab86c2e/raw";
+
+const GIST_URL = "https://githubusercontent.com";
 
 // Die reine Domain ohne Zugangsdaten
-const NGROK_DOMAIN = "https://superrespectably-acquainted-jestine.ngrok-free.dev";
+const NGROK_DOMAIN = "https://ngrok-free.dev";
+const ngrokUrl = url.parse(NGROK_DOMAIN);
+const NGROK_HOST = ngrokUrl.hostname;
 
 // Deine 50-Zeichen-Strings für Basic Auth
 const USERNAME = "oI493HHYNPZXcxlAGClDrwmhID3xFJRbrWzeYBsMabgcqqDuZL";
@@ -54,12 +60,12 @@ async function updateWhitelist() {
     }
 }
 
-// FIX 1: Intervall auf echte 5 Minuten gesetzt (300.000 ms statt 300 ms)
+// Intervall auf 30 Sekunden gesetzt (dein Intervall-Wert)
 setInterval(updateWhitelist, 30000);
 // Start-Verzögerung
 setTimeout(updateWhitelist, 2000);
 
-// FIX 2: Event-Listener hinzufügen, der den Request-Body für den Proxy fixiert,
+// Event-Listener hinzufügen, der den Request-Body für den Proxy fixiert,
 // bevor er an ngrok geschickt wird (behebt leere Datei-Uploads)
 proxy.on('proxyReq', function(proxyReq, req, res, options) {
     if (req.body) {
@@ -69,7 +75,8 @@ proxy.on('proxyReq', function(proxyReq, req, res, options) {
     }
 });
 
-http.createServer((req, res) => {
+// HTTP-Server Instanz erstellen
+const server = http.createServer((req, res) => {
     // IP-Adresse extrahieren
     let clientIp = '';
     const forwardedFor = req.headers['x-forwarded-for'];
@@ -86,12 +93,11 @@ http.createServer((req, res) => {
 
     console.log(`Anfrage von IP: [${clientIp}] für Pfad: [${req.url}]`);
 
-    // Abgleich gegen die Whitelist
+    // Abgleich gegen die Whitelist für reguläre HTTP-Web-Anfragen
     if (whitelist.includes(clientIp)) {
         proxy.web(req, res, { 
             target: NGROK_DOMAIN, 
             changeOrigin: true,
-            // Hier passiert die Magie: Auth & Bypass Header
             headers: {
                 "Authorization": authHeader,
                 "ngrok-skip-browser-warning": "true",
@@ -106,6 +112,65 @@ http.createServer((req, res) => {
         res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(`🛡️ SHIELD TITAN OS: Zugriff verweigert.<br>Deine IP ist nicht freigeschaltet: <b>${clientIp}</b>`);
     }
-}).listen(process.env.PORT || 3000, () => {
+});
+
+// === TITAN TCP TUNNEL UPGRADE ===
+// Fängt HTTP-CONNECT Anfragen (wie von openssl oder nc per ProxyCommand) ab
+server.on('connect', (req, clientSocket, head) => {
+    let clientIp = '';
+    const forwardedFor = req.headers['x-forwarded-for'];
+    
+    if (forwardedFor) {
+        clientIp = forwardedFor.split(',')[0].trim();
+    } else {
+        clientIp = clientSocket.remoteAddress;
+    }
+
+    if (clientIp.startsWith('::ffff:')) {
+        clientIp = clientIp.replace('::ffff:', '');
+    }
+
+    console.log(`[CONNECT-SSH] Tunnel-Anfrage von IP: [${clientIp}]`);
+
+    // Sicherheits-Check für den SSH-Tunnel gegen deine Whitelist
+    if (!whitelist.includes(clientIp)) {
+        console.log(`[CONNECT-SSH] Blockiert: IP [${clientIp}] steht nicht auf der Whitelist.`);
+        clientSocket.write('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n🛡️ SHIELD TITAN OS: IP nicht freigeschaltet.');
+        clientSocket.end();
+        return;
+    }
+
+    // Wenn IP whitelisted ist: Baue die rohe TCP-Pipeline zu ngrok auf (Port 443 für HTTPS)
+    const targetPort = ngrokUrl.protocol === 'https:' ? 443 : 80;
+    const serverSocket = net.connect(targetPort, NGROK_HOST, () => {
+        // Dem lokalen SSH-Client signalisieren, dass der Tunnel steht
+        clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        
+        // Die Protokoll-Header manuell in den Socket injizieren, damit ngrok uns durchlässt
+        // Verwendet deine echten 50-Zeichen Basic-Auth-Variablen
+        serverSocket.write(`CONNECT ${ngrokUrl.host}:443 HTTP/1.1\r\n`);
+        serverSocket.write(`Host: ${ngrokUrl.host}\r\n`);
+        serverSocket.write(`Authorization: ${authHeader}\r\n`);
+        serverSocket.write(`ngrok-skip-browser-warning: true\r\n\r\n`);
+        
+        // Eventuell im Puffer verbliebene Daten sofort nachschieben
+        if (head && head.length > 0) serverSocket.write(head);
+
+        // Daten im Kreis streamen – Asynchrones Socket-Streaming
+        serverSocket.pipe(clientSocket);
+        clientSocket.pipe(serverSocket);
+    });
+
+    serverSocket.on('error', (err) => {
+        console.error("Tunnel-Verbindungsfehler zu ngrok:", err.message);
+        clientSocket.end();
+    });
+    
+    clientSocket.on('error', () => serverSocket.end());
+    clientSocket.on('close', () => serverSocket.end());
+});
+
+// Server an den Port binden
+server.listen(process.env.PORT || 3000, () => {
     console.log("SHIELD Proxy läuft auf Port", process.env.PORT || 3000);
 });
